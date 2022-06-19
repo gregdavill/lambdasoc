@@ -1,21 +1,22 @@
-#nmigen: UnusedElaboratable=no
+#amaranth: UnusedElaboratable=no
 
 import unittest
 
-from nmigen import *
-from nmigen.utils import log2_int
-from nmigen.back.pysim import *
+from amaranth import *
+from amaranth.utils import log2_int
+from amaranth.back.pysim import *
 
-from nmigen_soc.wishbone import CycleType, BurstTypeExt
+from amaranth_soc.wishbone import CycleType, BurstTypeExt
 
-from ._wishbone import *
+from .utils.wishbone import *
 from ..periph.sram import SRAMPeripheral
 
 
 def simulation_test(dut, process):
-    with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
-        sim.add_clock(1e-6)
-        sim.add_sync_process(process)
+    sim = Simulator(dut)
+    sim.add_clock(1e-6)
+    sim.add_sync_process(process)
+    with sim.write_vcd("test.vcd"):
         sim.run()
 
 

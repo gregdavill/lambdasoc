@@ -1,10 +1,12 @@
 import unittest
 
-from nmigen import *
-from nmigen.lib.io import pin_layout
-from nmigen.back.pysim import *
+from amaranth import *
+from amaranth.lib.io import pin_layout
+from amaranth.back.pysim import *
 
-from ._wishbone import *
+from amaranth_stdio.serial import AsyncSerial
+
+from .utils.wishbone import *
 from ..periph.serial import AsyncSerialPeripheral
 
 
@@ -23,7 +25,9 @@ class AsyncSerialPeripheralTestCase(unittest.TestCase):
     def test_loopback(self):
         pins = Record([("rx", pin_layout(1, dir="i")),
                        ("tx", pin_layout(1, dir="o"))])
-        dut = AsyncSerialPeripheral(divisor=5, pins=pins)
+
+        core = AsyncSerial(divisor=5, pins=pins)
+        dut = AsyncSerialPeripheral(core=core)
         m = Module()
         m.submodules.serial = dut
         m.d.comb += pins.rx.i.eq(pins.tx.o)
@@ -40,7 +44,7 @@ class AsyncSerialPeripheralTestCase(unittest.TestCase):
             yield from wb_write(dut.bus, addr=tx_data_addr, data=0xab, sel=0xf)
             yield
 
-            for i in range(10):
+            for i in range(61):
                 yield
             self.assertTrue((yield dut.irq))
 
@@ -51,7 +55,8 @@ class AsyncSerialPeripheralTestCase(unittest.TestCase):
             self.assertEqual(rx_data, 0xab)
             yield
 
-        with Simulator(m, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_clock(1e-6)
-            sim.add_sync_process(process)
+        sim = Simulator(m)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(process)
+        with sim.write_vcd("test.vcd"):
             sim.run()

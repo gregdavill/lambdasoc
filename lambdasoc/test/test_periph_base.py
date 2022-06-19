@@ -1,17 +1,20 @@
-# nmigen: UnusedElaboratable=no
+# amaranth: UnusedElaboratable=no
 
 import unittest
-from nmigen import *
-from nmigen.back.pysim import *
+from amaranth import *
+from amaranth.back.pysim import *
 
-from ._wishbone import *
+from amaranth_soc.memory import MemoryMap
+
+from .utils.wishbone import *
 from ..periph.base import Peripheral, CSRBank, PeripheralBridge
 
 
 def simulation_test(dut, process):
-    with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
-        sim.add_clock(1e-6)
-        sim.add_sync_process(process)
+    sim = Simulator(dut)
+    sim.add_clock(1e-6)
+    sim.add_sync_process(process)
+    with sim.write_vcd("test.vcd"):
         sim.run()
 
 
@@ -85,10 +88,14 @@ class PeripheralTestCase(unittest.TestCase):
 
 
 class CSRBankTestCase(unittest.TestCase):
-    def test_csr_name(self):
-        bank = CSRBank(name_prefix="foo")
-        bar = bank.csr(1, "r")
-        self.assertEqual(bar.name, "foo_bar")
+    def test_bank_name(self):
+        bank = CSRBank(name="foo")
+        self.assertEqual(bank.name, "foo")
+
+    def test_bank_name_wrong(self):
+        with self.assertRaisesRegex(TypeError,
+                r"Name must be a string, not 2"):
+            bank = CSRBank(name=2)
 
     def test_csr_name_wrong(self):
         bank = CSRBank()
@@ -125,6 +132,8 @@ class PeripheralSimulationTestCase(unittest.TestCase):
 
                 self.win_0   = self.window(addr_width=1, data_width=8, sparse=True, addr=0x000)
                 self.win_1   = self.window(addr_width=1, data_width=32, granularity=8, addr=0x200)
+                self.win_0.memory_map = MemoryMap(addr_width=1, data_width=8)
+                self.win_1.memory_map = MemoryMap(addr_width=3, data_width=8)
 
                 self._bridge = self.bridge(data_width=32, granularity=8, alignment=2)
                 self.bus     = self._bridge.bus

@@ -1,9 +1,9 @@
-#nmigen: UnusedElaboratable=no
+#amaranth: UnusedElaboratable=no
 
 import unittest
 
-from nmigen import *
-from nmigen.back.pysim import *
+from amaranth import *
+from amaranth.back.pysim import *
 
 from ..periph import IRQLine
 from ..periph.intc import *
@@ -103,6 +103,7 @@ class GenericInterruptControllerTestCase(unittest.TestCase):
             yield Delay(1e-6)
             self.assertEqual((yield dut.ip), 0b11)
 
-        with Simulator(dut, vcd_file=open("test.vcd", "w")) as sim:
-            sim.add_process(process)
+        sim = Simulator(dut)
+        sim.add_process(process)
+        with sim.write_vcd("test.vcd"):
             sim.run()

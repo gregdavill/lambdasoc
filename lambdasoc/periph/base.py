@@ -1,10 +1,10 @@
-from nmigen import *
-from nmigen import tracer
-from nmigen.utils import log2_int
+from amaranth import *
+from amaranth import tracer
+from amaranth.utils import log2_int
 
-from nmigen_soc import csr, wishbone
-from nmigen_soc.memory import MemoryMap
-from nmigen_soc.csr.wishbone import WishboneCSRBridge
+from amaranth_soc import csr, wishbone
+from amaranth_soc.memory import MemoryMap
+from amaranth_soc.csr.wishbone import WishboneCSRBridge
 
 
 from .event import *
@@ -118,42 +118,41 @@ class Peripheral:
                             .format(irq))
         self._irq = irq
 
-    def csr_bank(self, *, addr=None, alignment=None):
+    def csr_bank(self, *, name=None, addr=None, alignment=None):
         """Request a CSR bank.
 
         Arguments
         ---------
+        name : str
+            Optional. Bank name.
         addr : int or None
             Address of the bank. If ``None``, the implicit next address will be used.
             Otherwise, the exact specified address (which must be a multiple of
             ``2 ** max(alignment, bridge_alignment)``) will be used.
         alignment : int or None
             Alignment of the bank. If not specified, the bridge alignment is used.
-            See :class:`nmigen_soc.csr.Multiplexer` for details.
+            See :class:`amaranth_soc.csr.Multiplexer` for details.
 
         Return value
         ------------
         An instance of :class:`CSRBank`.
         """
-        bank = CSRBank(name_prefix=self.name)
+        bank = CSRBank(name=name)
         self._csr_banks.append((bank, addr, alignment))
         return bank
 
     def window(self, *, addr_width, data_width, granularity=None, features=frozenset(),
-               alignment=0, addr=None, sparse=None):
+               name=None, addr=None, sparse=None):
         """Request a window to a subordinate bus.
 
-        See :meth:`nmigen_soc.wishbone.Decoder.add` for details.
+        See :meth:`amaranth_soc.wishbone.Decoder.add` for details.
 
         Return value
         ------------
-        An instance of :class:`nmigen_soc.wishbone.Interface`.
+        An instance of :class:`amaranth_soc.wishbone.Interface`.
         """
         window = wishbone.Interface(addr_width=addr_width, data_width=data_width,
-                                    granularity=granularity, features=features)
-        granularity_bits = log2_int(data_width // window.granularity)
-        window.memory_map = MemoryMap(addr_width=addr_width + granularity_bits,
-                                      data_width=window.granularity, alignment=alignment)
+                                    granularity=granularity, features=features, name=name)
         self._windows.append((window, addr, sparse))
         return window
 
@@ -219,12 +218,15 @@ class CSRBank:
 
     Parameters
     ----------
-    name_prefix : str
-        Name prefix of the bank registers.
+    name : str
+        Optional. Name prefix of the bank registers.
     """
-    def __init__(self, *, name_prefix=""):
-        self._name_prefix = name_prefix
-        self._csr_regs    = []
+    def __init__(self, *, name=None):
+        if name is not None and not isinstance(name, str):
+            raise TypeError("Name must be a string, not {!r}".format(name))
+
+        self.name      = name
+        self._csr_regs = []
 
     def csr(self, width, access, *, addr=None, alignment=None, name=None,
             src_loc_at=0):
@@ -233,29 +235,28 @@ class CSRBank:
         Parameters
         ----------
         width : int
-            Width of the register. See :class:`nmigen_soc.csr.Element`.
+            Width of the register. See :class:`amaranth_soc.csr.Element`.
         access : :class:`Access`
-            Register access mode. See :class:`nmigen_soc.csr.Element`.
+            Register access mode. See :class:`amaranth_soc.csr.Element`.
         addr : int
-            Address of the register. See :meth:`nmigen_soc.csr.Multiplexer.add`.
+            Address of the register. See :meth:`amaranth_soc.csr.Multiplexer.add`.
         alignment : int
-            Register alignment. See :class:`nmigen_soc.csr.Multiplexer`.
+            Register alignment. See :class:`amaranth_soc.csr.Multiplexer`.
         name : str
             Name of the register. If ``None`` (default) the name is inferred from the variable
             name this register is assigned to.
 
         Return value
         ------------
-        An instance of :class:`nmigen_soc.csr.Element`.
+        An instance of :class:`amaranth_soc.csr.Element`.
         """
         if name is not None and not isinstance(name, str):
             raise TypeError("Name must be a string, not {!r}".format(name))
         name = name or tracer.get_var_name(depth=2 + src_loc_at).lstrip("_")
 
-        elem_name = "{}_{}".format(self._name_prefix, name)
-        if any(elem.name == elem_name for (elem, _, _) in self._csr_regs):
-            raise Exception("CSR \"{}\" has already been defined".format(elem_name))
-        elem = csr.Element(width, access, name=elem_name)
+        if any(elem.name == name for (elem, _, _) in self._csr_regs):
+            raise Exception("CSR \"{}\" has already been defined".format(name))
+        elem = csr.Element(width, access, name=name)
         self._csr_regs.append((elem, addr, alignment))
         return elem
 
@@ -283,17 +284,17 @@ class PeripheralBridge(Elaboratable):
     periph : :class:`Peripheral`
         The peripheral whose resources are exposed by this bridge.
     data_width : int
-        Data width. See :class:`nmigen_soc.wishbone.Interface`.
+        Data width. See :class:`amaranth_soc.wishbone.Interface`.
     granularity : int or None
-        Granularity. See :class:`nmigen_soc.wishbone.Interface`.
+        Granularity. See :class:`amaranth_soc.wishbone.Interface`.
     features : iter(str)
-        Optional signal set. See :class:`nmigen_soc.wishbone.Interface`.
+        Optional signal set. See :class:`amaranth_soc.wishbone.Interface`.
     alignment : int
-        Resource alignment. See :class:`nmigen_soc.memory.MemoryMap`.
+        Resource alignment. See :class:`amaranth_soc.memory.MemoryMap`.
 
     Attributes
     ----------
-    bus : :class:`nmigen_soc.wishbone.Interface`
+    bus : :class:`amaranth_soc.wishbone.Interface`
         Wishbone bus providing access to the resources of the peripheral.
     irq : :class:`IRQLine`, out
         Interrupt request. It is raised if any event source is enabled and has a pending
@@ -306,14 +307,18 @@ class PeripheralBridge(Elaboratable):
 
         self._wb_decoder = wishbone.Decoder(addr_width=1, data_width=data_width,
                                             granularity=granularity,
-                                            features=features, alignment=alignment)
+                                            features=features, alignment=alignment,
+                                            name=periph.name)
 
         self._csr_subs = []
 
         for bank, bank_addr, bank_alignment in periph.iter_csr_banks():
             if bank_alignment is None:
                 bank_alignment = alignment
-            csr_mux = csr.Multiplexer(addr_width=1, data_width=8, alignment=bank_alignment)
+            csr_mux = csr.Multiplexer(
+                addr_width=1, data_width=granularity, alignment=bank_alignment,
+                name=bank.name,
+            )
             for elem, elem_addr, elem_alignment in bank.iter_csr_regs():
                 if elem_alignment is None:
                     elem_alignment = alignment
@@ -328,10 +333,10 @@ class PeripheralBridge(Elaboratable):
 
         events = list(periph.iter_events())
         if len(events) > 0:
-            self._int_src = InterruptSource(events, name="{}_ev".format(periph.name))
+            self._int_src = InterruptSource(events, name=periph.name)
             self.irq      = self._int_src.irq
 
-            csr_mux = csr.Multiplexer(addr_width=1, data_width=8, alignment=alignment)
+            csr_mux = csr.Multiplexer(addr_width=1, data_width=8, alignment=alignment, name="ev")
             csr_mux.add(self._int_src.status,  extend=True)
             csr_mux.add(self._int_src.pending, extend=True)
             csr_mux.add(self._int_src.enable,  extend=True)

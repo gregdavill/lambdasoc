@@ -1,8 +1,9 @@
-from nmigen import *
-from nmigen.utils import log2_int
+from amaranth import *
+from amaranth.utils import log2_int
 
-from nmigen_soc import wishbone
-from nmigen_soc.memory import MemoryMap
+from amaranth_soc import wishbone
+from amaranth_soc.memory import MemoryMap
+from amaranth_soc.periph import ConstantMap
 
 from . import Peripheral
 
@@ -26,7 +27,7 @@ class SRAMPeripheral(Peripheral, Elaboratable):
 
     Attributes
     ----------
-    bus : :class:`nmigen_soc.wishbone.Interface`
+    bus : :class:`amaranth_soc.wishbone.Interface`
         Wishbone bus interface.
     """
     # TODO raise bus.err if read-only and a bus write is attempted.
@@ -41,15 +42,14 @@ class SRAMPeripheral(Peripheral, Elaboratable):
                              "of {} ({} / {})"
                               .format(size, data_width // granularity, data_width, granularity))
 
-        self._mem  = Memory(depth=(size * granularity) // data_width, width=data_width,
-                            name=self.name)
+        self._mem = Memory(depth=(size * granularity) // data_width, width=data_width)
 
         self.bus = wishbone.Interface(addr_width=log2_int(self._mem.depth),
                                       data_width=self._mem.width, granularity=granularity,
                                       features={"cti", "bte"})
 
-        map = MemoryMap(addr_width=log2_int(size), data_width=granularity)
-        map.add_resource(self._mem, size=size)
+        map = MemoryMap(addr_width=log2_int(size), data_width=granularity, name=self.name)
+        map.add_resource(self._mem, name="mem", size=size)
         self.bus.memory_map = map
 
         self.size        = size
@@ -63,6 +63,12 @@ class SRAMPeripheral(Peripheral, Elaboratable):
     @init.setter
     def init(self, init):
         self._mem.init = init
+
+    @property
+    def constant_map(self):
+        return ConstantMap(
+            SIZE = self.size,
+        )
 
     def elaborate(self, platform):
         m = Module()

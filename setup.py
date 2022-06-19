@@ -19,12 +19,21 @@ setup(
     use_scm_version=scm_version(),
     author="Jean-François Nguyen",
     author_email="jf@lambdaconcept.com",
-    description="A framework for building SoCs with nMigen",
+    description="A framework for building SoCs with Amaranth",
     #long_description="""TODO""",
     license="BSD",
     setup_requires=["setuptools_scm"],
     install_requires=[
-        "nmigen",
+        "jinja2>=3.0",
+        "amaranth>=0.3",
+        "amaranth-soc",
+        "amaranth-stdio",
+        "amaranth-boards",
+        "minerva",
+
+        "migen",
+        "litex",
+        "litedram",
     ],
     entry_points={
         "console_scripts": [
@@ -35,6 +44,7 @@ setup(
         "SFL": ["asyncserial"]
     },
     packages=find_packages(),
+    zip_safe=False, # install package as a directory. needed to build the SoC firmware.
     include_package_data=True,
     project_urls={
         "Source Code": "https://github.com/lambdaconcept/lambdasoc",

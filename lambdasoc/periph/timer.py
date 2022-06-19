@@ -1,4 +1,6 @@
-from nmigen import *
+from amaranth import *
+
+from amaranth_soc.periph import ConstantMap
 
 from . import Peripheral
 
@@ -32,7 +34,7 @@ class TimerPeripheral(Peripheral, Elaboratable):
 
     Attributes
     ----------
-    bus : :class:`nmigen_soc.wishbone.Interface`
+    bus : :class:`amaranth_soc.wishbone.Interface`
         Wishbone bus interface.
     irq : :class:`IRQLine`
         Interrupt request.
@@ -58,6 +60,12 @@ class TimerPeripheral(Peripheral, Elaboratable):
         self._bridge  = self.bridge(data_width=32, granularity=8, alignment=2)
         self.bus      = self._bridge.bus
         self.irq      = self._bridge.irq
+
+    @property
+    def constant_map(self):
+        return ConstantMap(
+            CTR_WIDTH = self.width,
+        )
 
     def elaborate(self, platform):
         m = Module()

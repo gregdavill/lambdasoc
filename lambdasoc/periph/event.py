@@ -1,7 +1,7 @@
-from nmigen import *
-from nmigen import tracer
+from amaranth import *
+from amaranth import tracer
 
-from nmigen_soc import csr
+from amaranth_soc import csr
 
 
 __all__ = ["EventSource", "IRQLine", "InterruptSource"]
@@ -95,9 +95,9 @@ class InterruptSource(Elaboratable):
         self._events = list(events)
 
         width = len(events)
-        self.status  = csr.Element(width, "r",  name="{}_status".format(self.name))
-        self.pending = csr.Element(width, "rw", name="{}_pending".format(self.name))
-        self.enable  = csr.Element(width, "rw", name="{}_enable".format(self.name))
+        self.status  = csr.Element(width, "r",  name="status")
+        self.pending = csr.Element(width, "rw", name="pending")
+        self.enable  = csr.Element(width, "rw", name="enable")
 
         self.irq = IRQLine(name="{}_irq".format(self.name))
 
@@ -127,8 +127,11 @@ class InterruptSource(Elaboratable):
             else:
                 assert False # :nocov:
 
-            with m.If(event_trigger):
-                m.d.sync += self.pending.r_data[i].eq(1)
+            if event.mode == "level":
+                m.d.sync += self.pending.r_data[i].eq(event_trigger)
+            else:
+                with m.If(event_trigger):
+                    m.d.sync += self.pending.r_data[i].eq(1)
 
         m.d.comb += self.irq.eq((self.pending.r_data & self.enable.r_data).any())
 

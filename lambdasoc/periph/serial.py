@@ -1,9 +1,12 @@
-from nmigen import *
-from nmigen.lib.fifo import SyncFIFO
+from amaranth import *
+from amaranth.lib.fifo import SyncFIFOBuffered
 
-from nmigen_stdio.serial import AsyncSerial
+from amaranth_soc.periph import ConstantMap
+
+from amaranth_stdio.serial import AsyncSerial
 
 from . import Peripheral
+from ..sim.blackboxes.serial.wrapper import AsyncSerial_Blackbox
 
 
 __all__ = ["AsyncSerialPeripheral"]
@@ -12,7 +15,14 @@ __all__ = ["AsyncSerialPeripheral"]
 class AsyncSerialPeripheral(Peripheral, Elaboratable):
     """Asynchronous serial transceiver peripheral.
 
-    See :class:`nmigen_stdio.serial.AsyncSerial` for details.
+    See :class:`amaranth_stdio.serial.AsyncSerial` for details.
+
+    Notes
+    -----
+
+    * If this peripheral is used with the LambdaSoC BIOS, `rx_depth * data_bits` should be at least
+    256 bytes in order to buffer a complete SFL frame. Otherwise, a race condition may occur during
+    a serialboot at high baudrates.
 
     CSR registers
     -------------
@@ -23,7 +33,7 @@ class AsyncSerialPeripheral(Peripheral, Elaboratable):
     rx_rdy : read-only
         Receiver ready. The receiver FIFO is non-empty.
     rx_err : read-only
-        Receiver error flags. See :class:`nmigen_stdio.serial.AsyncSerialRX` for layout.
+        Receiver error flags. See :class:`amaranth_stdio.serial.AsyncSerialRX` for layout.
     tx_data : write-only
         Transmitter data.
     tx_rdy : read-only
@@ -44,30 +54,27 @@ class AsyncSerialPeripheral(Peripheral, Elaboratable):
         Depth of the receiver FIFO.
     tx_depth : int
         Depth of the transmitter FIFO.
-    divisor : int
-        Clock divisor reset value. Should be set to ``int(clk_frequency // baudrate)``.
-    divisor_bits : int
-        Optional. Clock divisor width. If omitted, ``bits_for(divisor)`` is used instead.
-    data_bits : int
-        Data width.
-    parity : ``"none"``, ``"mark"``, ``"space"``, ``"even"``, ``"odd"``
-        Parity mode.
+    core : :class:`AsyncSerial` or :class:`AsyncSerial_Blackbox`
+        PHY to use
     pins : :class:`Record`
-        Optional. UART pins. See :class:`nmigen_boards.resources.UARTResource`.
+        Optional. UART pins. See :class:`amaranth_boards.resources.UARTResource`.
 
     Attributes
     ----------
-    bus : :class:`nmigen_soc.wishbone.Interface`
+    bus : :class:`amaranth_soc.wishbone.Interface`
         Wishbone bus interface.
     irq : :class:`IRQLine`
         Interrupt request line.
     """
-    def __init__(self, *, rx_depth=16, tx_depth=16, **kwargs):
-        super().__init__()
+    def __init__(self, *, core, rx_depth=256, tx_depth=16, **kwargs):
+        super().__init__(**kwargs)
 
-        self._phy       = AsyncSerial(**kwargs)
-        self._rx_fifo   = SyncFIFO(width=self._phy.rx.data.width, depth=rx_depth)
-        self._tx_fifo   = SyncFIFO(width=self._phy.tx.data.width, depth=tx_depth)
+        if not isinstance(core, (AsyncSerial, AsyncSerial_Blackbox)):
+            raise TypeError("Core must be an instance of AsyncSerial or AsyncSerial_Blackbox, "
+                            "not {!r}".format(core))
+        self._phy       = core
+        self._rx_fifo   = SyncFIFOBuffered(width=self._phy.rx.data.width, depth=rx_depth)
+        self._tx_fifo   = SyncFIFOBuffered(width=self._phy.tx.data.width, depth=tx_depth)
 
         bank            = self.csr_bank()
         self._divisor   = bank.csr(self._phy.divisor.width, "rw")
@@ -84,6 +91,13 @@ class AsyncSerialPeripheral(Peripheral, Elaboratable):
         self._bridge    = self.bridge(data_width=32, granularity=8, alignment=2)
         self.bus        = self._bridge.bus
         self.irq        = self._bridge.irq
+
+    @property
+    def constant_map(self):
+        return ConstantMap(
+            RX_DEPTH = self._rx_fifo.depth,
+            TX_DEPTH = self._tx_fifo.depth,
+        )
 
     def elaborate(self, platform):
         m = Module()
